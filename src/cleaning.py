@@ -319,10 +319,8 @@ def clean_transport(df):
         errors="coerce",
     )
 
-    df["transit_hours"] = pd.to_numeric(
-        df["transit_hours"],
-        errors="coerce",
-    )
+    # Extract numeric transit hours from values such as "4.7 hrs".
+    df["transit_hours"] = df["transit_hours"].apply(parse_numeric)
 
     df["distance"] = pd.to_numeric(
         df["distance"],
