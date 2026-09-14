@@ -228,6 +228,10 @@ def clean_arrivals(df):
         ),
         axis=1,
     )
+    # Quintal is the primary business unit required by the datathon.
+    df["arrival_quantity_qtl"] = (
+        df["arrival_quantity_kg"] / 100
+    )
 
     # Keep source problems visible instead of silently modifying them.
     df["quantity_status"] = "VALID"
@@ -296,7 +300,28 @@ def clean_prices(df):
     ] = "INVALID_ORDER"
 
     return df
+def normalize_vehicle_number(value):
+    """Standardize vehicle registration formatting without validating legality."""
 
+    if pd.isna(value):
+        return None
+
+    value = str(value).strip().upper()
+
+    # Remove spaces, hyphens, and other formatting characters.
+    value = re.sub(r"[^A-Z0-9]", "", value)
+
+    match = re.match(
+        r"^([A-Z]{2})(\d{1,2})([A-Z]{1,3})(\d{4})$",
+        value,
+    )
+
+    if not match:
+        return value
+
+    state, number, series, registration = match.groups()
+
+    return f"{state}-{number}-{series}-{registration}"
 
 # ---------------------------------------------------------------------------
 # Transport cleaning
@@ -308,6 +333,9 @@ def clean_transport(df):
     df = df.copy()
 
     df["mandi_id"] = df["mandi_id"].apply(normalize_mandi_id)
+    df["vehicle_no_normalized"] = df["vehicle_no"].apply(
+        normalize_vehicle_number
+    )
 
     df["departure_time"] = pd.to_datetime(
         df["departure_time"],
@@ -335,7 +363,7 @@ def clean_transport(df):
     )
 
     # Convert miles to kilometres while preserving the original distance.
-    df["distance_km"] = df["distance"]
+    df["distance_km"] = pd.to_numeric(df["distance"], errors="coerce").astype(float)
 
     miles_mask = df["distance_unit"].isin(
         ["mile", "miles", "mi"]
@@ -483,32 +511,59 @@ def clean_weather(df):
 
     df = df.copy()
 
-    df["timestamp"] = df["timestamp"].apply(parse_datetime_with_timezone)
-
-    df["temperature"] = pd.to_numeric(
-        df["temperature"],
-        errors="coerce",
+        # Preserve the normalized UTC timestamp.
+    df["timestamp_utc"] = df["timestamp"].apply(
+        parse_datetime_with_timezone
     )
 
-    df["rainfall"] = pd.to_numeric(
-        df["rainfall"],
-        errors="coerce",
+    # Convert UTC to IST for business-day analysis.
+    df["timestamp_ist"] = (
+        pd.to_datetime(
+            df["timestamp_utc"],
+            errors="coerce",
+            utc=True,
+        )
+        .dt.tz_convert("Asia/Kolkata")
     )
 
-    df["humidity_percent"] = pd.to_numeric(
-        df["humidity_percent"],
-        errors="coerce",
-    )
+    # Daily weather analysis will use the IST calendar date.
+    df["weather_date_ist"] = df["timestamp_ist"].dt.date
+
+    # Extract numeric temperature even when the source contains values
+    # such as "39.8°C". The explicit temp_unit column remains authoritative
+    # when it is available.
+    temperature_value = df["temperature"].apply(parse_numeric)
 
     df["temp_unit"] = df["temp_unit"].apply(
         normalize_temp_unit
     )
 
-    df["rain_unit"] = df["rain_unit"].apply(
-        normalize_rain_unit
+    embedded_celsius = (
+        df["temperature"]
+        .astype("string")
+        .str.contains("°c", case=False, na=False)
     )
 
-    # Preserve the original measurements and create canonical columns.
+    embedded_fahrenheit = (
+        df["temperature"]
+        .astype("string")
+        .str.contains("°f", case=False, na=False)
+    )
+
+    # Recover missing units from embedded temperature values.
+    df.loc[
+        df["temp_unit"].isna() & embedded_celsius,
+        "temp_unit",
+    ] = "C"
+
+    df.loc[
+        df["temp_unit"].isna() & embedded_fahrenheit,
+        "temp_unit",
+    ] = "F"
+
+    df["temperature"] = temperature_value
+
+    # Canonical temperature is always Celsius.
     df["temperature_c"] = df["temperature"]
 
     fahrenheit_mask = df["temp_unit"] == "F"
@@ -523,6 +578,13 @@ def clean_weather(df):
         ] - 32
     ) * 5 / 9
 
+    df["rainfall"] = df["rainfall"].apply(parse_numeric)
+
+    df["rain_unit"] = df["rain_unit"].apply(
+        normalize_rain_unit
+    )
+
+    # Canonical rainfall is always millimetres.
     df["rainfall_mm"] = df["rainfall"]
 
     inch_mask = df["rain_unit"] == "inch"
@@ -537,8 +599,25 @@ def clean_weather(df):
         ] * 25.4
     )
 
-    return df
+    df["humidity_percent"] = pd.to_numeric(
+        df["humidity_percent"],
+        errors="coerce",
+    )
 
+    # Preserve physically impossible rainfall values for auditability.
+    df["rainfall_status"] = "VALID"
+
+    df.loc[
+        df["rainfall"].isna(),
+        "rainfall_status",
+    ] = "MISSING"
+
+    df.loc[
+        df["rainfall"].notna()
+        & (df["rainfall_mm"] < 0),
+        "rainfall_status",
+    ] = "INVALID_NEGATIVE"
+    return df
 
 # ---------------------------------------------------------------------------
 # Mandi master cleaning
@@ -623,12 +702,6 @@ def analyze_price_anomalies(raw_prices, cleaned_prices):
             "Values below 100:",
             len(suspicious)
         )
-
-
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
-
 def main():
     data = load_raw_data()
 
@@ -725,13 +798,12 @@ def main():
         weather[
             [
                 "sensor_id",
-                "timestamp",
-                "temperature",
-                "temp_unit",
+                "timestamp_utc",
+                "timestamp_ist",
+                "weather_date_ist",
                 "temperature_c",
-                "rainfall",
-                "rain_unit",
                 "rainfall_mm",
+                "rainfall_status",
                 "humidity_percent",
             ]
         ]
