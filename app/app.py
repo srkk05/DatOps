@@ -4,6 +4,7 @@ import textwrap
 
 import duckdb
 import pandas as pd
+import subprocess
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
@@ -1064,8 +1065,19 @@ div[data-testid="stDataFrame"],
 @st.cache_resource
 def get_connection():
     if not DB_PATH.exists():
-        st.error(f"DuckDB database not found: {DB_PATH}. Run `python src/database.py` first.")
-        st.stop()
+        with st.spinner("Preparing DatOps data warehouse..."):
+            result = subprocess.run(
+                [sys.executable, str(ROOT / "src" / "database.py")],
+                cwd=str(ROOT),
+                capture_output=True,
+                text=True,
+            )
+
+        if result.returncode != 0:
+            st.error("Failed to build the DatOps database.")
+            st.code(result.stderr or result.stdout)
+            st.stop()
+
     return duckdb.connect(str(DB_PATH), read_only=True)
 
 

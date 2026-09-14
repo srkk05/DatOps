@@ -1,22 +1,42 @@
 # DatOps — Mandi-to-Market Supply Chain Optimizer
 
-My submission for the **TransOrg AgentIQ Datathon — Track 3: AgriTech**.
+**TransOrg AgentIQ Datathon — Track 3: AgriTech**
 
-The problem I focused on is fairly simple:
+DatOps is my solution for the Mandi-to-Market Supply Chain problem.
 
-A State Agriculture Board needs to understand what is happening across mandis — how much crop is arriving, whether prices are above or below MSP, where transport is getting delayed, and whether weather conditions are related to changes in arrivals.
+The basic problem is straightforward: an agriculture board needs to know what is happening across mandis — how much crop is arriving, how prices compare with MSP, where transport is getting delayed, and whether weather conditions are associated with changes in arrivals.
 
-The difficult part is that the source data is messy.
+The difficult part is getting trustworthy answers from messy source data.
 
 So I built DatOps around this flow:
 
-**messy data → cleaned data → validated analytics → operational signals → dashboard + natural-language queries**
+**messy source data → cleaning → validation → analytical layer → operational signals → dashboard + natural-language analytics**
 
-I deliberately focused on making the data pipeline reliable before building the dashboard.
+I intentionally treated data quality as part of the product rather than something to do after building the dashboard.
 
 ---
 
-## What DatOps does
+## Quick Overview
+
+| Area | DatOps |
+|---|---|
+| Track | AgriTech |
+| Main problem | Mandi-to-market supply chain monitoring |
+| Source datasets | 5 |
+| Arrival records | 25,750 |
+| Price records | 12,000 |
+| Transport records | 10,400 |
+| Weather records | 15,000 |
+| Canonical crops | 6 |
+| Analytical database | DuckDB |
+| Dashboard | Streamlit + Plotly |
+| Natural-language layer | AgriQuery |
+| Risk layer | Market + Logistics + Weather |
+| Testing | Pytest + Agent smoke tests |
+
+---
+
+# What DatOps Does
 
 DatOps combines five supplied datasets:
 
@@ -30,52 +50,72 @@ The system provides:
 
 - crop arrival analysis
 - price vs MSP analysis
+- below-MSP monitoring
 - mandi-level market pressure
 - transport delay analysis
-- warehouse and route performance
+- warehouse performance
+- mandi → warehouse route analysis
 - weather summaries
+- weather/arrival relationship analysis
 - recent arrival surge/drop detection
 - mandi operational risk scores
-- recommended actions for investigation
-- an interactive Streamlit dashboard
-- **AgriQuery**, a natural-language analytics interface
+- action priorities and recommendations
+- interactive dashboard views
+- natural-language analytics through **AgriQuery**
 
-The main questions I wanted the dashboard to answer are:
+The main questions I wanted the system to answer are:
 
 - Which mandis need attention first?
-- Where are prices below MSP?
-- Which transport routes have unusually high delays?
-- Which crops are seeing arrival increases or decreases?
-- Which mandis have recently experienced a significant arrival change?
-- Is weather associated with changes in arrivals?
-- What should an operator investigate first?
-- Can a normal question be converted into the right analytical chart?
+- Which crops are arriving in the largest quantities?
+- Where are observed prices below MSP?
+- Which mandis are under market pressure?
+- Which warehouses have higher transit times or delay rates?
+- Which mandi → warehouse routes have frequent delays?
+- Which mandis have recently experienced an arrival surge or drop?
+- What does the recent weather look like?
+- Is rainfall associated with changes in arrivals?
+- Why is a particular mandi considered high-risk?
+- Can an operator ask a normal question and get the appropriate analytical chart?
 
 ---
 
-# Why I built it this way
+# Why I Built It This Way
 
 I did not start by building charts.
 
-The first thing I checked was whether the five datasets could actually be used together without creating misleading numbers.
+The first thing I checked was whether the five datasets could actually be used together without producing misleading results.
 
-There were duplicate records, mixed crop names, different units, inconsistent dates, missing values, malformed price fields, invalid transport times and invalid rainfall values.
+That turned out to be one of the main challenges.
 
-That made the data-cleaning part just as important as the dashboard.
+The source data contains:
 
-I therefore separated the project into three main stages:
+- duplicate records
+- inconsistent crop names
+- mixed units
+- inconsistent dates
+- missing values
+- malformed price strings
+- inconsistent mandi IDs
+- invalid transport times
+- mixed weather units
+- mixed weather timezones
+- invalid rainfall values
+
+That made the cleaning and validation layer just as important as the dashboard.
+
+I therefore separated the project into three broad stages:
 
 1. **Data rescue and validation**
 2. **Analytical layer**
 3. **Dashboard and AgriQuery**
 
-The dashboard reads from the analytical layer instead of independently cleaning and calculating everything inside the UI.
+The dashboard uses the analytical layer rather than independently cleaning the raw files inside the UI.
 
-This keeps the calculations consistent and makes the pipeline easier to reproduce.
+This gives the project one place for the business calculations and makes the results easier to reproduce.
 
 ---
 
-# Data
+# Source Data
 
 The supplied bundle contains five source datasets.
 
@@ -93,38 +133,80 @@ The supplied data is synthetic and intended for the datathon.
 
 # Data Rescue
 
-The raw files are intentionally inconsistent. I wanted to keep those problems visible instead of simply dropping everything that looked unusual.
+The raw files contain several quality problems.
 
-Some of the issues found during profiling:
+Rather than hiding them, I profiled the source data first and documented the problems that could affect downstream analysis.
+
+Some of the findings were:
 
 - **25,750** arrival records
 - **750** exact duplicate arrival rows
-- **36** raw crop-name variants reduced to **6 canonical crops**
+- **36** raw crop-name variants
 - **5,143** arrival records with missing units
 - **10,400** transport records
 - **400** exact duplicate transport rows
 - **563** negative transit-hour records
 - **1,518** negative rainfall values
-- **60** mandi master rows but only **57** unique normalized mandi IDs
+- **60** mandi master rows
+- **57** unique normalized mandi IDs
 - **1,235** price records with missing/unmatched mandi IDs
+- **773** price records with missing district values
 
 The six canonical crops are:
 
-- Wheat
-- Rice
-- Maize
-- Mustard
-- Cotton
-- Sugarcane
-
-## I did not silently delete every bad value
-
-Where possible, the pipeline keeps the source value and adds a status field describing whether it is usable for a particular analysis.
-
-Examples:
-
 ```text
-quantity_status
-price_status
-transit_status
-rainfall_status
+wheat
+rice
+maize
+mustard
+cotton
+sugarcane
+
+Project Architecture
+--------------------
+                 RAW DATA
+                     │
+                     ▼
+              ┌─────────────┐
+              │  ingestion  │
+              └──────┬──────┘
+                     ▼
+              ┌─────────────┐
+              │  forensics  │
+              └──────┬──────┘
+                     ▼
+              ┌─────────────┐
+              │   cleaning  │
+              └──────┬──────┘
+                     ▼
+              ┌─────────────┐
+              │ validation  │
+              └──────┬──────┘
+                     ▼
+              ┌─────────────┐
+              │   DuckDB    │
+              └──────┬──────┘
+                     ▼
+              ┌─────────────┐
+              │  analytics  │
+              └──────┬──────┘
+                     │
+          ┌──────────┼──────────┐
+          ▼          ▼          ▼
+       Market     Logistics   Weather
+       Stress       Stress      Stress
+          │          │          │
+          └──────────┼──────────┘
+                     ▼
+              ┌─────────────┐
+              │ Risk Engine │
+              └──────┬──────┘
+                     ▼
+             Arrival Shock Radar
+                     │
+                     ▼
+               Action Engine
+                     │
+              ┌──────┴──────┐
+              ▼             ▼
+         Dashboard      AgriQuery
