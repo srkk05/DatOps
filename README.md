@@ -520,7 +520,7 @@ python -m pytest -q
 Current verified result:
 
 ```text
-18 passed
+23 passed
 ```
 
 ### Run the AgriQuery smoke tests
