@@ -1,212 +1,631 @@
-# DatOps — Mandi-to-Market Supply Chain Optimizer
+DatOps — Mandi-to-Market Supply Chain Optimizer
 
-**TransOrg AgentIQ Datathon — Track 3: AgriTech**
+TransOrg AgentIQ Datathon — Track 3: AgriTech
 
-DatOps is my solution for the Mandi-to-Market Supply Chain problem.
+DatOps started with a fairly simple question:
 
-The basic problem is straightforward: an agriculture board needs to know what is happening across mandis — how much crop is arriving, how prices compare with MSP, where transport is getting delayed, and whether weather conditions are associated with changes in arrivals.
+Can we give an agriculture operations team one place to see what is happening across mandis, prices, transport and weather — without trusting messy source data blindly?
 
-The difficult part is getting trustworthy answers from messy source data.
+The answer became a small data engineering + analytics system rather than just a dashboard.
 
-So I built DatOps around this flow:
+I built the pipeline around one rule: clean first, validate second, analyze third.
 
-**messy source data → cleaning → validation → analytical layer → operational signals → dashboard + natural-language analytics**
+The idea
 
-I intentionally treated data quality as part of the product rather than something to do after building the dashboard.
+A mandi can have a good arrival day but a bad market price.
+A warehouse can have enough inbound activity but unusually high transit times.
+A sudden arrival drop can be worth investigating even when the average numbers still look normal.
 
----
+So instead of showing one giant table, DatOps combines a few operational signals:
 
-## Quick Overview
+Raw data
+   ↓
+Profile + inspect
+   ↓
+Clean + standardize
+   ↓
+Validate
+   ↓
+DuckDB
+   ↓
+Analytics
+   ↓
+Risk + Arrival Shock
+   ↓
+Dashboard + AgriQuery
 
-| Area | DatOps |
-|---|---|
-| Track | AgriTech |
-| Main problem | Mandi-to-market supply chain monitoring |
-| Source datasets | 5 |
-| Arrival records | 25,750 |
-| Price records | 12,000 |
-| Transport records | 10,400 |
-| Weather records | 15,000 |
-| Canonical crops | 6 |
-| Analytical database | DuckDB |
-| Dashboard | Streamlit + Plotly |
-| Natural-language layer | AgriQuery |
-| Risk layer | Market + Logistics + Weather |
-| Testing | Pytest + Agent smoke tests |
+The goal is not to predict everything.
 
----
+The goal is to help an operator answer:
 
-# What DatOps Does
+"What needs my attention right now, and why?"
 
-DatOps combines five supplied datasets:
+Live demo
 
-- mandi crop arrivals
-- wholesale prices and MSP
-- transport/logistics
-- weather sensor observations
-- mandi master data
+Dashboard: https://datops-mandi2market.streamlit.app/
 
-The system provides:
+GitHub: https://github.com/srkk05/DatOps
 
-- crop arrival analysis
-- price vs MSP analysis
-- below-MSP monitoring
-- mandi-level market pressure
-- transport delay analysis
-- warehouse performance
-- mandi → warehouse route analysis
-- weather summaries
-- weather/arrival relationship analysis
-- recent arrival surge/drop detection
-- mandi operational risk scores
-- action priorities and recommendations
-- interactive dashboard views
-- natural-language analytics through **AgriQuery**
+What is in the data?
 
-The main questions I wanted the system to answer are:
+The datathon bundle has five sources:
 
-- Which mandis need attention first?
-- Which crops are arriving in the largest quantities?
-- Where are observed prices below MSP?
-- Which mandis are under market pressure?
-- Which warehouses have higher transit times or delay rates?
-- Which mandi → warehouse routes have frequent delays?
-- Which mandis have recently experienced an arrival surge or drop?
-- What does the recent weather look like?
-- Is rainfall associated with changes in arrivals?
-- Why is a particular mandi considered high-risk?
-- Can an operator ask a normal question and get the appropriate analytical chart?
+Dataset
 
----
+What I use it for
 
-# Why I Built It This Way
+Mandi arrivals
 
-I did not start by building charts.
+Crop arrivals and supply trends
 
-The first thing I checked was whether the five datasets could actually be used together without producing misleading results.
+Prices + MSP
 
-That turned out to be one of the main challenges.
+Wholesale price pressure
 
-The source data contains:
+Transport logistics
 
-- duplicate records
-- inconsistent crop names
-- mixed units
-- inconsistent dates
-- missing values
-- malformed price strings
-- inconsistent mandi IDs
-- invalid transport times
-- mixed weather units
-- mixed weather timezones
-- invalid rainfall values
+Transit and delay analysis
 
-That made the cleaning and validation layer just as important as the dashboard.
+Weather sensors
 
-I therefore separated the project into three broad stages:
+Weather conditions and rainfall
 
-1. **Data rescue and validation**
-2. **Analytical layer**
-3. **Dashboard and AgriQuery**
+Mandi master
 
-The dashboard uses the analytical layer rather than independently cleaning the raw files inside the UI.
+Mandi/district reference data
 
-This gives the project one place for the business calculations and makes the results easier to reproduce.
+The supplied data is synthetic.
 
----
+1. The part I spent the most time on: data rescue
 
-# Source Data
+The raw data looked usable at first glance, but there were quite a few things that could quietly break the analysis.
 
-The supplied bundle contains five source datasets.
+Across the five datasets there are 63,210 raw records.
 
-| Source | Purpose | Main cleaning |
-|---|---|---|
-| `track3_mandi_arrivals.csv` | Daily crop arrivals | Crop/date/mandi normalization, unit conversion, quantity validation |
-| `track3_price_and_msp.json` | Wholesale prices and MSP | Numeric/currency parsing, crop normalization, price validation |
-| `track3_transport_logistics.csv` | Mandi-to-warehouse trips | Vehicle normalization, miles → km, transit validation |
-| `track3_weather_sensors.xlsx` | Weather observations | UTC → IST, °F → °C, inches → mm, rainfall validation |
-| `track3_mandi_master.csv` | Mandi reference data | Mandi ID normalization and duplicate handling |
+After cleaning, the analytical layer has 62,057 records.
 
-The supplied data is synthetic and intended for the datathon.
+Dataset
 
----
+Raw
 
-# Data Rescue
+Cleaned
 
-The raw files contain several quality problems.
+Removed
 
-Rather than hiding them, I profiled the source data first and documented the problems that could affect downstream analysis.
+Arrivals
 
-Some of the findings were:
+25,750
 
-- **25,750** arrival records
-- **750** exact duplicate arrival rows
-- **36** raw crop-name variants
-- **5,143** arrival records with missing units
-- **10,400** transport records
-- **400** exact duplicate transport rows
-- **563** negative transit-hour records
-- **1,518** negative rainfall values
-- **60** mandi master rows
-- **57** unique normalized mandi IDs
-- **1,235** price records with missing/unmatched mandi IDs
-- **773** price records with missing district values
+25,000
 
-The six canonical crops are:
+750
 
-```text
-wheat
-rice
-maize
-mustard
-cotton
-sugarcane
+Prices
 
-Project Architecture
---------------------
-                 RAW DATA
-                     │
-                     ▼
-              ┌─────────────┐
-              │  ingestion  │
-              └──────┬──────┘
-                     ▼
-              ┌─────────────┐
-              │  forensics  │
-              └──────┬──────┘
-                     ▼
-              ┌─────────────┐
-              │   cleaning  │
-              └──────┬──────┘
-                     ▼
-              ┌─────────────┐
-              │ validation  │
-              └──────┬──────┘
-                     ▼
-              ┌─────────────┐
-              │   DuckDB    │
-              └──────┬──────┘
-                     ▼
-              ┌─────────────┐
-              │  analytics  │
-              └──────┬──────┘
-                     │
-          ┌──────────┼──────────┐
-          ▼          ▼          ▼
-       Market     Logistics   Weather
-       Stress       Stress      Stress
-          │          │          │
-          └──────────┼──────────┘
-                     ▼
-              ┌─────────────┐
-              │ Risk Engine │
-              └──────┬──────┘
-                     ▼
-             Arrival Shock Radar
-                     │
-                     ▼
-               Action Engine
-                     │
-              ┌──────┴──────┐
-              ▼             ▼
-         Dashboard      AgriQuery
+12,000
+
+12,000
+
+0
+
+Transport
+
+10,400
+
+10,000
+
+400
+
+Weather
+
+15,000
+
+15,000
+
+0
+
+Mandi master
+
+60
+
+57
+
+3
+
+Total
+
+63,210
+
+62,057
+
+1,153
+
+Some of the problems I found:
+
+750 exact duplicate arrival rows
+
+400 exact duplicate transport rows
+
+3 duplicate mandi-master records after ID normalization
+
+36 different crop-name variants which reduce to 6 canonical crops
+
+mixed KG, Qtl and tonne units
+
+mixed miles and kilometres
+
+prices containing messy currency/string formats
+
+UTC, IST and naive timestamps
+
+temperatures in both °C and °F
+
+rainfall in both mm and inches
+
+negative transit values
+
+negative rainfall values
+
+missing timestamps, units, vehicle numbers and other fields
+
+I deliberately did not fill every missing value with a guessed value.
+
+For operational data, hiding a bad value can be worse than leaving it visible.
+
+Instead, the cleaning layer adds standardized fields and status/quality information so downstream analytics can decide what is safe to use.
+
+2. Standardization
+
+The main transformations are:
+
+Field
+
+Standard form
+
+Crop
+
+6 canonical crop names
+
+Mandi ID
+
+MANDI###
+
+Quantity
+
+KG + Qtl
+
+Distance
+
+KM
+
+Temperature
+
+°C
+
+Rainfall
+
+mm
+
+Weather time
+
+UTC + IST
+
+Vehicle number
+
+normalized registration format
+
+For example:
+
+1 tonne = 10 Qtl
+1 Qtl   = 100 KG
+
+Crop variants such as English/Hindi/Punjabi spellings are mapped into a common crop vocabulary.
+
+The exact mappings live in src/cleaning.py.
+
+3. Market analysis
+
+The market side focuses on the relationship between observed wholesale prices and MSP.
+
+The dashboard can show:
+
+modal price
+
+MSP
+
+below-MSP observations
+
+modal-vs-MSP gap
+
+crop-wise price information
+
+I use the modal price rather than simply averaging all price fields because the modal value is the field that represents the most common observed wholesale price in the supplied data.
+
+4. Logistics analysis
+
+For transport I look at:
+
+average transit hours
+
+median transit hours
+
+delay rate
+
+mandi → warehouse routes
+
+warehouse-level inbound trip activity
+
+The delay benchmark is based on the empirical P90 of valid observed transit times.
+
+One important limitation:
+
+The transport source does not contain shipment quantity.
+
+So when I talk about warehouse "volume", I mean inbound trip activity, not tonnes or Qtl.
+
+I kept this distinction explicit rather than manufacturing a volume metric.
+
+5. Weather
+
+This part needed an assumption.
+
+The weather workbook has sensor IDs and observations, but it does not provide reliable district or mandi geography.
+
+The datathon notes allow a sensor-location mapping assumption, so I created a deterministic sensor → district mapping for district-level analysis.
+
+That mapping is stored separately:
+
+data/weather_sensor_district_map.csv
+
+I am treating this as a synthetic analytical assumption, not real geography.
+
+I also do not assign weather directly to individual mandis.
+
+The weather layer can therefore answer things like:
+
+rainfall by district
+
+recent weather conditions
+
+rainfall/arrival relationship by district
+
+The risk engine keeps weather stress at the system level, because attaching synthetic weather to a particular mandi would give a false sense of precision.
+
+6. Arrival Shock Radar
+
+Average arrival numbers can hide a sudden change.
+
+So I added a simple arrival-shock detector.
+
+It compares:
+
+recent 30-day average observed-day arrivals
+
+against
+
+the previous 30-day average observed-day arrivals.
+
+I require at least 3 observed days in each comparison window.
+
+The result is:
+
+SURGE   >= +20%
+DROP    <= -20%
+STABLE  otherwise
+
+This is intentionally simple.
+
+It is an anomaly/attention signal, not a forecast.
+
+That makes it easier to explain to someone looking at the dashboard and also avoids pretending that the synthetic dataset supports a sophisticated forecasting model when it does not.
+
+7. Risk engine
+
+The risk engine combines three areas of pressure:
+
+Market
+
+70% below-MSP rate
+
+30% negative modal-vs-MSP gap
+
+Logistics
+
+60% average transit
+
+40% delay rate
+
+Weather
+
+70% rainfall intensity
+
+30% rainy-sensor share
+
+Mandi operational risk is:
+
+50% market
+50% logistics
+
+System risk also considers the latest valid weather signal.
+
+The final labels are:
+
+Score
+
+Label
+
+80+
+
+HIGH
+
+60–79.99
+
+ELEVATED
+
+40–59.99
+
+WATCH
+
+<40
+
+LOW
+
+These are relative prioritization scores, not probabilities.
+
+In other words, a HIGH mandi does not mean "80% chance of failure".
+
+It means that, relative to the observed data, this mandi deserves more attention.
+
+8. Action Engine
+
+I didn't want the dashboard to stop at:
+
+"This mandi is high risk."
+
+So the Action Engine combines operational risk with the arrival-shock signal.
+
+For example:
+
+Arrival DROP + Logistics stress
+        ↓
+Investigate supply disruption
+and transport alternatives
+
+Arrival DROP + Market stress
+        ↓
+Review procurement / market conditions
+
+Arrival SURGE + Logistics stress
+        ↓
+Prepare for possible congestion
+and higher inbound activity
+
+The recommendations are deliberately phrased as actions to investigate, not guaranteed predictions.
+
+9. AgriQuery
+
+AgriQuery is the natural-language part of DatOps.
+
+You can ask questions like:
+
+Show top mandis by arrivals
+
+Show wheat daily arrivals
+
+Which mandis have the highest transit delay?
+
+Show rice price vs MSP
+
+Show the mandi risk for MANDI047
+
+The flow is:
+
+Question
+   ↓
+Intent detection
+   ↓
+Approved query plan
+   ↓
+DuckDB
+   ↓
+Data + chart + explanation
+
+I chose a controlled query-plan approach instead of allowing arbitrary generated SQL.
+
+That means the agent can understand a useful set of natural-language questions while keeping database access read-only and predictable.
+
+Depending on the question, AgriQuery selects an appropriate visualization such as:
+
+bar chart
+
+line chart
+
+indicator
+
+price vs MSP comparison
+
+stress matrix
+
+table
+
+It also returns a short explanation alongside the result.
+
+10. A note about the official Wheat / Amritsar query
+
+The datathon includes a query along the lines of:
+
+Plot daily arrival trend of Wheat in Amritsar mandi vs MSP for the last 30 days.
+
+The source data does not give us enough exact (mandi, date, crop) price coverage to honestly manufacture a complete daily price series.
+
+So DatOps does not create missing daily prices just to make the chart look complete.
+
+The query router resolves available geography conservatively and uses only observations supported by the data.
+
+This was an important design choice for me: a less impressive-looking truthful result is better than a polished fabricated one.
+
+11. Why DuckDB?
+
+I used DuckDB as the local analytical layer because the project mostly needs:
+
+SQL aggregations
+
+joins
+
+filtering
+
+fast local analytics
+
+a reproducible generated database
+
+The database is rebuilt from the raw files.
+
+It is not treated as another source of truth.
+
+Project structure
+
+DatOps/
+├── app/
+│   └── app.py
+├── data/
+│   ├── raw/
+│   └── weather_sensor_district_map.csv
+├── docs/
+│   ├── advanced_insights.md
+│   ├── architecture.md
+│   ├── data_dictionary.md
+│   └── data_quality.md
+├── src/
+│   ├── agent.py
+│   ├── analytics.py
+│   ├── cleaning.py
+│   ├── database.py
+│   ├── forensics.py
+│   ├── ingestion.py
+│   ├── profile.py
+│   ├── risk_engine.py
+│   ├── smoke_agent.py
+│   ├── validation.py
+│   └── weather_mapping.py
+├── tests/
+│   ├── test_analytics_risk.py
+│   └── test_pipeline.py
+├── .gitignore
+├── README.md
+└── requirements.txt
+
+Running it locally
+
+I used Python 3.14 for the project.
+
+Install dependencies:
+
+python -m pip install -r requirements.txt
+
+Build the database
+
+python src\database.py
+
+Expected analytical row counts:
+
+mandi_master       57
+arrivals        25000
+prices          12000
+transport       10000
+weather         15000
+
+Run validation
+
+python src\validation.py
+
+This prints the data-quality checks, including:
+
+raw vs cleaned row counts
+
+missing values
+
+crop normalization
+
+quantity checks
+
+price checks
+
+referential integrity
+
+transport validation
+
+weather validation
+
+Run tests
+
+python -m pytest -q
+
+Current result:
+
+18 passed
+
+Run the agent smoke test
+
+python src\smoke_agent.py
+
+Run the dashboard
+
+python -m streamlit run app\app.py
+
+Documentation
+
+If you want the details rather than just the dashboard:
+
+docs/data_dictionary.md — fields, units and joins
+
+docs/data_quality.md — profiling and cleaning evidence
+
+docs/architecture.md — system design
+
+docs/advanced_insights.md — anomaly/risk methodology
+
+Things I would not claim from this dataset
+
+There are a few limitations worth being explicit about.
+
+Sparse price/arrival overlap
+
+Exact (mandi, date, crop) overlap between arrival and price facts is sparse.
+
+I therefore avoid forcing arbitrary exact-date joins or inventing missing observations.
+
+Weather geography
+
+The source does not provide reliable sensor→mandi geography.
+
+District-level weather analysis uses the tracked synthetic mapping described above.
+
+Mandi-level weather attribution is not claimed.
+
+Synthetic data
+
+The dataset is synthetic, so the results should not be interpreted as a real agricultural market forecast.
+
+Risk scores
+
+Risk is a prioritization mechanism, not a probability model.
+
+Machine learning
+
+I explored forecasting and clustering approaches, but the available data did not justify adding a complicated model just for the sake of calling it AI.
+
+The final product favors transparent, testable signals where they are more defensible.
+
+Final check
+
+Before submitting, I run:
+
+python src\database.py
+python src\validation.py
+python -m pytest -q
+python src\smoke_agent.py
+python -m streamlit run app\app.py
+
+The important part for me is that the same raw data can reproduce the analytical layer and that the dashboard numbers can be traced back through the pipeline.
+
+DatOps is basically a mandi operations cockpit built on top of a data-quality pipeline. It is a tool that helps you to understand the data you have and how it can be used to build a model.

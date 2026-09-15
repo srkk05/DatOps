@@ -207,6 +207,10 @@ def clean_arrivals(df):
     """Clean and standardize the mandi arrivals fact table."""
 
     df = df.copy()
+    raw_rows = len(df)
+    df = df.drop_duplicates().copy()
+    df.attrs["raw_rows"] = raw_rows
+    df.attrs["cleaned_rows"] = len(df)
 
     df["mandi_id"] = df["mandi_id"].apply(normalize_mandi_id)
 
@@ -264,7 +268,10 @@ def clean_prices(df):
     """Clean and standardize the mandi price and MSP fact table."""
 
     df = df.copy()
-
+    raw_rows = len(df)
+    df = df.drop_duplicates().copy()
+    df.attrs["raw_rows"] = raw_rows
+    df.attrs["cleaned_rows"] = len(df)
     df["mandi_id"] = df["mandi_id"].apply(normalize_mandi_id)
 
     df["crop_name"] = df["crop_name"].apply(normalize_crop_name)
@@ -327,24 +334,51 @@ def normalize_vehicle_number(value):
 # Transport cleaning
 # ---------------------------------------------------------------------------
 
+def parse_transport_datetime(value):
+    """Parse transport timestamps one value at a time.
+
+    Scalar parsing avoids pandas inferring one datetime format for an entire
+    mixed-format column and coercing otherwise valid timestamps to NaT.
+    """
+    if pd.isna(value):
+        return pd.NaT
+
+    # The transport source contains multiple legitimate timestamp formats.
+    # ``format="mixed"`` parses each scalar according to its own format,
+    # while ``dayfirst=True`` matches the source's Indian date convention.
+    try:
+        timestamp = pd.to_datetime(
+            value,
+            format="mixed",
+            dayfirst=True,
+            errors="coerce",
+        )
+    except (ValueError, TypeError, OverflowError):
+        return pd.NaT
+
+    return timestamp
+
+
 def clean_transport(df):
     """Clean transport records and standardize distance units."""
 
     df = df.copy()
+    raw_rows = len(df)
+    df = df.drop_duplicates().copy()
+    df.attrs["raw_rows"] = raw_rows
+    df.attrs["cleaned_rows"] = len(df)
 
     df["mandi_id"] = df["mandi_id"].apply(normalize_mandi_id)
     df["vehicle_no_normalized"] = df["vehicle_no"].apply(
         normalize_vehicle_number
     )
 
-    df["departure_time"] = pd.to_datetime(
-        df["departure_time"],
-        errors="coerce",
+    df["departure_time"] = df["departure_time"].apply(
+        parse_transport_datetime
     )
 
-    df["arrival_time"] = pd.to_datetime(
-        df["arrival_time"],
-        errors="coerce",
+    df["arrival_time"] = df["arrival_time"].apply(
+        parse_transport_datetime
     )
 
     # Extract numeric transit hours from values such as "4.7 hrs".
@@ -659,6 +693,14 @@ def clean_mandi_master(df):
     df["total_area_acres"] = pd.to_numeric(
         df["total_area_acres"],
         errors="coerce",
+    )
+
+    # The master is a dimension table, so keep exactly one record per
+    # canonical mandi_id after normalization.
+    df = (
+        df.sort_values(["mandi_id", "mandi_name"], na_position="last")
+        .drop_duplicates(subset=["mandi_id"], keep="first")
+        .reset_index(drop=True)
     )
 
     return df
