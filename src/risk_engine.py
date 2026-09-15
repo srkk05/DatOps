@@ -1,34 +1,17 @@
 """
-DataForge Explainable Risk Engine
----------------------------------
+Calculate system-level weather stress by IST date.
 
-Purpose:
-    Convert validated analytical signals into transparent 0-100 stress scores.
+Weather observations are not attributed to individual mandis.
+District-level weather analysis uses the tracked synthetic
+sensor -> district mapping permitted by the dataset notes.
 
-Design principles:
-    1. No black-box ML.
-    2. No fabricated business thresholds.
-    3. Scores are relative to the observed dataset/scope.
-    4. Every score keeps its source metrics and explanation.
-    5. Duplicate mandi-master IDs are deduplicated before dimensional joins
-       so dirty dimension records cannot multiply fact rows.
-    6. District weather analytics uses the tracked synthetic sensor -> district
-       mapping permitted by the dataset notes. Weather is not assigned to
-       individual mandis; the risk engine uses weather as a system-level signal.
+Components:
+    - maximum valid rainfall across sensors
+    - percentage of reporting observations with valid rainfall > 0
 
-Risk layers:
-    - Market stress: below-MSP rate + negative modal-vs-MSP gap.
-    - Logistics stress: average transit + delay rate.
-    - Weather stress: rainfall intensity + rainy-sensor coverage.
-    - Mandi operational risk: market + logistics only.
-    - System risk: market + logistics + weather.
-
-The percentile-based scoring deliberately avoids pretending that a
-dataset-derived value such as "18% delay" is a universal business SLA.
-A score of 80 means "high relative to this analytical population",
-not "80% probability of failure".
+This is a monitoring signal, not a claim that rainfall caused arrivals
+to change.
 """
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -497,8 +480,9 @@ def mandi_operational_risk() -> pd.DataFrame:
     """
     Combine market and logistics stress at mandi level.
 
-    Weather is excluded here because the source does not provide a
-    defensible sensor-to-mandi mapping.
+    Weather is excluded here because the tracked weather mapping supports
+    district-level attribution, not defensible mandi-level attribution.
+    Weather is therefore retained as a system-level signal.
 
     Weighting:
         market stress   50%
@@ -668,9 +652,10 @@ def system_risk_summary() -> dict:
     """
     Return a system-level summary.
 
-    Because weather cannot be mapped to mandis, this score is intentionally
-    system-wide rather than presented as a mandi risk score.
-
+    Because the available weather mapping does not support defensible
+    mandi-level attribution, weather contributes to system-level risk only.
+    District-level weather analysis remains available separately.
+        
     We use the latest weather stress observation and the overall market and
     logistics stress levels. The component scores are relative and intended
     for dashboard prioritization.
