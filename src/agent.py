@@ -1,4 +1,4 @@
-"""DataForge AgriQuery: safe natural-language analytics over DuckDB."""
+"""DatOps AgriQuery: controlled graph-based natural-language analytics over DuckDB."""
 from __future__ import annotations
 
 import json
@@ -483,28 +483,26 @@ def plan_question(question: str) -> QueryPlan:
 
 
 def run_question(question: str) -> dict[str, Any]:
-    plan = plan_question(question)
-    if plan.data_override is not None:
-        result = plan.data_override.copy()
-    else:
-        _validate_sql(plan.sql)
-        with get_connection() as con:
-            result = con.execute(plan.sql, plan.params).df()
+    # Execute the analytical graph while preserving the existing result contract.
+    # The graph is controlled: planning still selects an approved query plan and
+    # SQL is validated before DuckDB execution.
+    try:
+        from src.agent_graph import run_agent_graph
+    except ImportError:
+        from agent_graph import run_agent_graph
 
-    summary = _summary(plan.intent, result, plan)
-    return {
-        "question": question,
-        "intent": plan.intent,
-        "title": plan.title,
-        "explanation": plan.explanation,
-        "summary": summary,
-        "chart": plan.chart,
-        "chart_type": plan.chart,
-        "sql": plan.sql.strip(),
-        "rows": result,
-        "data": result,
-        "row_count": len(result),
-    }
+    def execute_sql(sql: str, params: tuple[Any, ...]) -> pd.DataFrame:
+        with get_connection() as con:
+            return con.execute(sql, params).df()
+
+    return run_agent_graph(
+        question,
+        clean_question=_clean_question,
+        planner=plan_question,
+        validator=_validate_sql,
+        executor=execute_sql,
+        summarizer=_summary,
+    )
 
 
 if __name__ == "__main__":

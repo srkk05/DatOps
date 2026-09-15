@@ -12,8 +12,9 @@ Design principles:
     4. Every score keeps its source metrics and explanation.
     5. Duplicate mandi-master IDs are deduplicated before dimensional joins
        so dirty dimension records cannot multiply fact rows.
-    6. Weather is treated as a system-level signal because the supplied
-       weather data does not contain a defensible sensor -> mandi mapping.
+    6. District weather analytics uses the tracked synthetic sensor -> district
+       mapping permitted by the dataset notes. Weather is not assigned to
+       individual mandis; the risk engine uses weather as a system-level signal.
 
 Risk layers:
     - Market stress: below-MSP rate + negative modal-vs-MSP gap.

@@ -326,6 +326,26 @@ These are suggested actions to investigate, not guaranteed predictions.
 
 AgriQuery is the natural-language analytics layer.
 
+It runs through an explicit controlled graph:
+
+```text
+QUESTION
+   ↓
+UNDERSTAND
+   ↓
+PLAN
+   ↓
+VALIDATE
+   ↓
+EXECUTE
+   ↓
+VISUALIZE
+   ↓
+EXPLAIN
+```
+
+Each node has one responsibility and passes explicit state forward. The planner selects from approved analytical query plans; SQL is validated as read-only before DuckDB execution. This gives the project an inspectable graph workflow without turning it into an unrestricted text-to-SQL generator. The runtime also returns its graph trace so a question's route is auditable.
+
 Example questions:
 
 ```text
