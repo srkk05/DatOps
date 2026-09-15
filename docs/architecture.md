@@ -103,7 +103,7 @@ This prevents one-to-many joins from artificially multiplying arrival, price, or
 
 ### 4. Avoid Unsupported Inference
 
-The supplied weather data does not provide a reliable sensor-to-mandi mapping. Instead of assigning weather observations to specific mandis without evidence, DatOps keeps weather as a system-level signal.
+The supplied weather data does not provide reliable source geography. DatOps therefore uses the tracked synthetic sensor→district mapping permitted by the competition notes for district-level weather analysis. Multiple sensors may map to a district, while UNKNOWN sensors remain unattributed. This is an analytical assumption, not claimed real-world geography. Weather is not assigned to individual mandis, and the risk engine continues to treat weather as a system-level signal.
 
 The same principle is applied to price and arrival data. When temporal overlap is too sparse, the pipeline does not create artificial exact-date relationships just to produce a correlation.
 

@@ -53,7 +53,7 @@ Key decisions include:
 * duplicate mandi master records are resolved before joining with transaction data;
 * invalid or negative transit values are excluded from logistics calculations;
 * negative rainfall values are retained for auditability but excluded from rainfall-intensity calculations;
-* weather is treated as a system-level signal because the available data does not provide a reliable sensor-to-mandi mapping;
+*weather is used for district-level analysis through the tracked synthetic sensor→district mapping permitted by the competition notes. DatOps does not claim mandi-level weather attribution; the risk engine continues to use weather as a system-level signal.
 * price and arrival records are not forced into exact-date joins when there is insufficient temporal overlap to support a meaningful comparison.
 
 These checks help prevent data-quality issues from silently affecting the final metrics and dashboard.

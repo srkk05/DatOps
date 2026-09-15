@@ -121,7 +121,7 @@
 | Arrivals  | Mandi Master | `mandi_id`                                               |
 | Prices    | Mandi Master | `mandi_id`                                               |
 | Transport | Mandi Master | `mandi_id`                                               |
-| Weather   | Mandi        | System-level only; no artificial mapping                 |
+| Weather   | District     | Tracked synthetic sensor→district mapping; no mandi-level attribution                      |
 | Arrivals  | Prices       | No forced exact-date join due to sparse temporal overlap |
 
 ## Weather attribution
