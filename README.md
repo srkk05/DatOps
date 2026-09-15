@@ -18,6 +18,7 @@ I built it around one rule:
 
 - **Dashboard:** https://datops-mandi2market.streamlit.app/
 - **Repository:** https://github.com/srkk05/DatOps
+- **Project Presentation:** https://docs.google.com/presentation/d/e/2PACX-1vT8kF2_OmnZxu0n8yxP0kotuSsCeUQCOTWYB2MtEJ2g4-zrAjPxay9p4A0ymmwQcJe8t9MJlr6lNpgN/pub?start=false&loop=false&delayms=3000
 
 ---
 
